@@ -1,0 +1,11 @@
+binance_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: clickhouse
+      driver: http
+      host: "{{ env_var('DBT_HOST', 'clickhouse') }}"
+      port: 8123
+      user: "{{ env_var('DBT_USER') }}"
+      password: "{{ env_var('DBT_PASSWORD') }}"
+      schema: binance

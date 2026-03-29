@@ -1,0 +1,18 @@
+[project]
+name = "binance-data-project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "aiokafka>=0.13.0",
+    "boto3>=1.42.70",
+    "dbt-clickhouse>=1.10.0",
+    "orjson>=3.11.7",
+    "pyarrow>=23.0.1",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "s3fs>=2026.2.0",
+    "websockets>=16.0",
+    "zstandard>=0.25.0",
+]

@@ -1,0 +1,189 @@
+services:
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v23.2.2
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --smp 1
+      - --memory 1G
+      - --reserve-memory 0M
+      - --overprovisioned
+      - --node-id 0
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+    ports:
+      - "19092:19092"
+      - "18082:18082"
+      - "9644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    networks:
+      - data-network
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.3.1
+    container_name: redpanda-console
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    networks:
+      - data-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9002:9000" # API
+      - "9001:9001" # Console
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - data-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set myminio http://minio:9000 admin password123;
+      mc mb myminio/raw-zone --ignore-existing;
+      mc version enable myminio/raw-zone;
+      exit 0;
+      "
+    networks:
+      - data-network
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    ports:
+      - "8123:8123" # HTTP port (dbt and UI)
+      - "9000:9000" # Native port (for Python)
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    env_file:
+      - ../.env
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - ./clickhouse/config.d:/etc/clickhouse-server/config.d
+    environment:
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+    networks:
+      - data-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  
+  airflow:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile.airflow
+    container_name: airflow
+    command: standalone
+    env_file:
+      - ../.env
+    environment:
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=False
+      - _AIRFLOW_WWW_USER_USERNAME=${AIRFLOW_ADMIN_USER}
+      - _AIRFLOW_WWW_USER_PASSWORD=${AIRFLOW_ADMIN_PASSWORD}
+    ports:
+      - "8081:8080"
+    volumes:
+      - ../airflow/dags:/opt/airflow/dags
+      - ../dbt_project:/opt/airflow/dbt_project
+    networks:
+      - data-network
+    depends_on:
+      - clickhouse
+  
+  producer:
+    build:
+      context: .. 
+      dockerfile: infrastructure/Dockerfile
+    container_name: producer
+    command: ["python", "src/producer/main.py"]
+    env_file:
+      - ../.env
+    environment:
+      REDPANDA_BROKERS: "redpanda:9092"
+    networks:
+      - data-network
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    restart: unless-stopped
+
+  consumer:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile
+    container_name: consumer
+    command: ["python", "src/consumer/main.py"]
+    env_file:
+      - ../.env
+    environment:
+      REDPANDA_BROKERS: "redpanda:9092"
+      MINIO_ENDPOINT: "http://minio:9000"
+    networks:
+      - data-network
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+  
+  superset:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile.superset
+    container_name: superset
+    env_file:
+      - ../.env
+    environment:
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
+    ports:
+      - "8088:8088"
+    networks:
+      - data-network
+    depends_on:
+      - clickhouse
+
+networks:
+  data-network:
+    driver: bridge
+
+volumes:
+  redpanda-data:
+  minio-data:
+  clickhouse-data:

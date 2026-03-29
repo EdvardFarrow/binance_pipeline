@@ -1,0 +1,11 @@
+FROM apache/superset:4.0.0
+
+USER root
+
+RUN pip install clickhouse-connect
+
+RUN mkdir -p /app/pythonpath
+
+RUN echo "SECRET_KEY = 'secret_key'" > /app/pythonpath/superset_config.py
+
+USER superset
