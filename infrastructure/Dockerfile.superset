@@ -1,11 +1,10 @@
-FROM apache/superset:4.0.0
+FROM apache/superset:4.1.1
 
 USER root
 
-RUN pip install clickhouse-connect
-
-RUN mkdir -p /app/pythonpath
-
-RUN echo "SECRET_KEY = 'secret_key'" > /app/pythonpath/superset_config.py
+RUN pip install --no-cache-dir clickhouse-connect && \
+    mkdir -p /app/pythonpath && \
+    echo "SECRET_KEY = 'super_secret_key_binance_project'" > /app/pythonpath/superset_config.py && \
+    chown -R superset:superset /app/pythonpath
 
 USER superset

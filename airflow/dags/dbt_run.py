@@ -13,7 +13,7 @@ with DAG(
     dag_id='dbt_binance_transform',
     default_args=default_args,
     start_date=datetime(2026, 3, 27), 
-    schedule_interval='*/5 * * * *',  # Every 5 min 
+    schedule='*/5 * * * *',  # Every 5 min 
     catchup=False,                    
     tags=['dbt', 'binance', 'clickhouse'],
 ) as dag:
