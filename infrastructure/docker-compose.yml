@@ -178,6 +178,46 @@ services:
       - data-network
     depends_on:
       - clickhouse
+    
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: crypto_ml
+    ports:
+      - "5432:5432"
+    networks:
+      - data-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d crypto_ml"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ml_api:
+    build:
+      context: ..
+      dockerfile: infrastructure/Dockerfile
+    container_name: ml_api
+    command: ["python", "-m", "uvicorn", "ml_service.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    env_file:
+      - ../.env
+    environment:
+      REDPANDA_BROKERS: "redpanda:9092"
+      POSTGRES_URL: "postgresql://admin:password123@postgres:5432/crypto_ml"
+      RAW_EVENTS_TOPIC: "binance_trades_raw"
+    ports:
+      - "8000:8000"
+    networks:
+      - data-network
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
 
 networks:
   data-network:
