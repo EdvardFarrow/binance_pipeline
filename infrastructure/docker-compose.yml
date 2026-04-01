@@ -48,8 +48,8 @@ services:
       - "9002:9000" # API
       - "9001:9001" # Console
     environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: password123
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
@@ -153,7 +153,6 @@ services:
       - ../.env
     environment:
       REDPANDA_BROKERS: "redpanda:9092"
-      MINIO_ENDPOINT: "http://minio:9000"
     networks:
       - data-network
     depends_on:
@@ -182,10 +181,13 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: postgres
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: crypto_ml
+    command: ["postgres", "-c", "wal_level=logical"]
+    env_file:
+      - ../.env
+    #environment:
+      #POSTGRES_USER: ${POSTGRES_USER}
+      #POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      #POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5432:5432"
     networks:
@@ -206,7 +208,6 @@ services:
       - ../.env
     environment:
       REDPANDA_BROKERS: "redpanda:9092"
-      POSTGRES_URL: "postgresql://admin:password123@postgres:5432/crypto_ml"
       RAW_EVENTS_TOPIC: "binance_trades_raw"
     ports:
       - "8000:8000"
@@ -218,6 +219,23 @@ services:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+  
+  debezium:
+    image: quay.io/debezium/connect:2.5
+    container_name: debezium
+    ports:
+      - "8083:8083" 
+    environment:
+      - BOOTSTRAP_SERVERS=redpanda:9092
+      - GROUP_ID=1
+      - CONFIG_STORAGE_TOPIC=debezium_configs
+      - OFFSET_STORAGE_TOPIC=debezium_offsets
+      - STATUS_STORAGE_TOPIC=debezium_statuses
+    networks:
+      - data-network
+    depends_on:
+      - redpanda
+      - postgres
 
 networks:
   data-network:

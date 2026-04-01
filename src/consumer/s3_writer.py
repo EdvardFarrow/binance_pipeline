@@ -21,6 +21,9 @@ TRADE_SCHEMA = pa.schema([
 
 class MinIOWriter:
     def __init__(self):
+        
+        
+        
         self.s3_client = boto3.client(
             's3',
             endpoint_url=settings.minio_endpoint,
@@ -30,7 +33,7 @@ class MinIOWriter:
             region_name='us-east-1'
         )
         self.bucket = settings.minio_raw_bucket
-
+        
         try:
             self.s3_client.head_bucket(Bucket=self.bucket)
         except self.s3_client.exceptions.ClientError:
@@ -52,7 +55,14 @@ class MinIOWriter:
             item['price'] = Decimal(str(item['price']))
             item['quantity'] = Decimal(str(item['quantity']))
 
-        table = pa.Table.from_pylist(clean_batch, schema=TRADE_SCHEMA)
+        raw_table = pa.Table.from_pylist(clean_batch)
+
+        schema_column_names = TRADE_SCHEMA.names
+
+        ordered_table = raw_table.select(schema_column_names)
+
+        table = ordered_table.cast(TRADE_SCHEMA, safe=False)
+        
         sink = pa.BufferOutputStream()
         pq.write_table(table, sink)
         file_bytes = sink.getvalue().to_pybytes()
