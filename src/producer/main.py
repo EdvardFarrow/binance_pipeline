@@ -24,9 +24,9 @@ async def main():
     producer = AIOKafkaProducer(
         bootstrap_servers=settings.redpanda_brokers,
         value_serializer=lambda v: orjson.dumps(v), 
-        acks="all",               # Waiting for confirmation from all replicas.
-        linger_ms=5,              # Waiting 5ms
-        compression_type=None     # Compressing traffic
+        acks=1,                     # Waiting for confirmation from all replicas.
+        linger_ms=10,               # Waiting 10ms
+        compression_type=None
     )
     
     await producer.start()
@@ -50,13 +50,13 @@ async def main():
                     trade = BinanceTrade(**trade_payload)
                     
                     # Send to the topic.
-                    await producer.send_and_wait(
+                    await producer.send(
                         topic=settings.raw_events_topic,
                         key=trade.symbol.encode('utf-8'),
                         value=trade.model_dump()
                     )
                     
-                    logger.info(f"Produced event: {trade.event_id[:8]}... | {trade.symbol} | Price: {trade.price}")
+                    #logger.info(f"Produced event: {trade.event_id[:8]}... | {trade.symbol} | Price: {trade.price}")
 
                 except Exception as e:
                     logger.error(f"Error processing message: {e}")

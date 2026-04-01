@@ -1,3 +1,4 @@
+from decimal import Decimal
 import uuid
 import io
 from datetime import datetime, timezone
@@ -7,6 +8,16 @@ import boto3
 from botocore.client import Config
 
 from src.common.config import settings
+
+TRADE_SCHEMA = pa.schema([
+    ('event_id', pa.string()),
+    ('event_time_ms', pa.int64()),
+    ('symbol', pa.string()),
+    ('trade_id', pa.int64()),
+    ('price', pa.decimal128(18, 8)),
+    ('quantity', pa.decimal128(18, 8)),
+    ('ingested_at', pa.int64())
+])
 
 class MinIOWriter:
     def __init__(self):
@@ -31,9 +42,17 @@ class MinIOWriter:
         """
         if not batch:
             return None
+        
+        clean_batch = [item for item in batch if 'price' in item]
+        
+        if not clean_batch:
+            return None
+        
+        for item in clean_batch:
+            item['price'] = Decimal(str(item['price']))
+            item['quantity'] = Decimal(str(item['quantity']))
 
-        table = pa.Table.from_pylist(batch)
-
+        table = pa.Table.from_pylist(clean_batch, schema=TRADE_SCHEMA)
         sink = pa.BufferOutputStream()
         pq.write_table(table, sink)
         file_bytes = sink.getvalue().to_pybytes()

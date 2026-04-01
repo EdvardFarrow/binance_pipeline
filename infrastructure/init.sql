@@ -16,7 +16,9 @@ ENGINE = S3Queue(
     '${S3_SECRET_KEY}', 
     'Parquet'
 )
-SETTINGS mode = 'ordered';
+SETTINGS 
+    mode = 'unordered',
+    s3queue_processing_threads_num = 4;
 
 CREATE TABLE IF NOT EXISTS binance.trades_raw
 (

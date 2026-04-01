@@ -14,7 +14,7 @@ from src.consumer.s3_writer import MinIOWriter
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 5000 
+BATCH_SIZE = 3000 
 
 async def main():
     logger.info("Starting Consumer and connecting to Redpanda...")
@@ -23,10 +23,13 @@ async def main():
     consumer = AIOKafkaConsumer(
         settings.raw_events_topic,
         bootstrap_servers=settings.redpanda_brokers,
-        group_id="raw_zone_loader_group",
-        auto_offset_reset="earliest", 
-        enable_auto_commit=False,     
-        value_deserializer=lambda x: orjson.loads(x)
+        group_id="raw_zone_loader_group_v3",
+        auto_offset_reset="latest", 
+        enable_auto_commit=True,     
+        value_deserializer=lambda x: orjson.loads(x),
+        max_poll_records=5000,    
+        fetch_max_bytes=5242880,  
+        fetch_min_bytes=1024,
     )
 
     await consumer.start()
@@ -34,18 +37,20 @@ async def main():
 
     batch = []
     try:
-        async for msg in consumer:
-            batch.append(msg.value)
+        while True:
+            result = await consumer.getmany(timeout_ms=1000, max_records=5000)
+            
+            for tp, messages in result.items():
+                for msg in messages:
+                    batch.append(msg.value)
 
             if len(batch) >= BATCH_SIZE:
-                logger.info(f"Batch reached {BATCH_SIZE} events. Writing to MinIO...")
+                logger.info(f"Batch reached {len(batch)} events. Writing to MinIO...")
                 
-                path = writer.write_batch(batch)
+                path = await asyncio.to_thread(writer.write_batch, batch.copy())
                 logger.info(f"Successfully wrote batch to {path}")
 
                 await consumer.commit()
-                logger.info("Offsets committed successfully.")
-
                 batch.clear()
 
     except asyncio.CancelledError:
